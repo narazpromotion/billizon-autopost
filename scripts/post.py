@@ -175,6 +175,42 @@ def wait_for_container(container_id, token, attempts=20, delay=6):
     raise PostError("Container never reached FINISHED. Not publishing.")
 
 
+PAGE_ID = "1337903236073632"  # the Billizon Facebook Page
+
+
+def check_token(ig_user_id, token):
+    """
+    Confirm the secret actually works, and say which kind of token it is.
+
+    This matters because a User token and a Page token both publish fine today,
+    but a User token expires after about 60 days and a Page token does not. The
+    difference is invisible until the day it breaks, so it is worth reporting.
+    GET /me returns the Page when asked with a Page token, and the person when
+    asked with a User token.
+    """
+    try:
+        who = api_get("me", {"fields": "id,name", "access_token": token})
+    except Exception as exc:
+        raise PostError(
+            "The IG_TOKEN secret was rejected by the Graph API. "
+            f"Check it was copied whole and has not expired. Detail: {exc}"
+        )
+
+    if who.get("id") == PAGE_ID:
+        log(f"  token: Page token for '{who.get('name')}'. Does not expire. Correct.")
+    else:
+        log(f"  token: USER token for '{who.get('name')}', not a Page token.")
+        log("  It will publish fine now but expires about 60 days after it was issued.")
+        log("  To make it permanent, ask GET /me/accounts with a long lived user")
+        log("  token and put the Billizon page's access_token in IG_TOKEN instead.")
+
+    account = api_get(
+        ig_user_id, {"fields": "username,followers_count", "access_token": token}
+    )
+    log(f"  account: @{account.get('username')} reachable, "
+        f"{account.get('followers_count', 0)} followers")
+
+
 def main():
     ig_user_id = os.environ.get("IG_USER_ID", "").strip()
     token = os.environ.get("IG_TOKEN", "").strip()
@@ -194,6 +230,9 @@ def main():
     log(f"Next up: {entry['image']}")
     validate(entry)
     log("Validation passed.")
+
+    log("Checking credentials...")
+    check_token(ig_user_id, token)
 
     image_url = f"{REPO_RAW}/images/{urllib.parse.quote(entry['image'])}"
     log(f"Image URL: {image_url}")
