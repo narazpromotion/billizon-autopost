@@ -180,13 +180,15 @@ PAGE_ID = "1337903236073632"  # the Billizon Facebook Page
 
 def check_token(ig_user_id, token):
     """
-    Confirm the secret actually works, and say which kind of token it is.
+    Confirm the secret works, say which kind of token it is, and above all
+    report WHEN IT DIES.
 
-    This matters because a User token and a Page token both publish fine today,
-    but a User token expires after about 60 days and a Page token does not. The
-    difference is invisible until the day it breaks, so it is worth reporting.
-    GET /me returns the Page when asked with a Page token, and the person when
-    asked with a User token.
+    Being a Page token is not enough. A Page token minted from a short lived
+    User token inherits that short life and stops working within hours, while a
+    Page token minted from a long lived User token never expires. Both look
+    identical to GET /me, which is why an earlier version of this function
+    cheerfully printed "Does not expire" about a token that expired the next
+    day. The only way to know is to ask, so we ask.
     """
     try:
         who = api_get("me", {"fields": "id,name", "access_token": token})
@@ -196,13 +198,32 @@ def check_token(ig_user_id, token):
             f"Check it was copied whole and has not expired. Detail: {exc}"
         )
 
-    if who.get("id") == PAGE_ID:
-        log(f"  token: Page token for '{who.get('name')}'. Does not expire. Correct.")
-    else:
-        log(f"  token: USER token for '{who.get('name')}', not a Page token.")
-        log("  It will publish fine now but expires about 60 days after it was issued.")
-        log("  To make it permanent, ask GET /me/accounts with a long lived user")
-        log("  token and put the Billizon page's access_token in IG_TOKEN instead.")
+    kind = "Page" if who.get("id") == PAGE_ID else "USER"
+    log(f"  token: {kind} token for '{who.get('name')}'")
+
+    if kind == "USER":
+        log("  WARNING: this is a User token, not a Page token. Publishing works")
+        log("  today but the token dies with the user session.")
+
+    # expires_at of 0 means never. Anything else is a countdown.
+    try:
+        info = api_get("debug_token", {"input_token": token, "access_token": token})
+        data = info.get("data", {})
+        expires = data.get("expires_at")
+        if expires == 0:
+            log("  expiry: never. This is a permanent token, which is what we want.")
+        elif expires:
+            when = datetime.fromtimestamp(expires, timezone.utc)
+            left = when - datetime.now(timezone.utc)
+            hours = left.total_seconds() / 3600
+            log(f"  EXPIRY: {when:%Y-%m-%d %H:%M} UTC, about {hours:.0f} hours from now.")
+            log("  THIS TOKEN IS TEMPORARY AND WILL BREAK THE SCHEDULE WHEN IT DIES.")
+            log("  A permanent one comes from a System User in Meta Business Settings")
+            log("  with token expiration set to Never. Replace IG_TOKEN with that.")
+        else:
+            log("  expiry: could not be determined from debug_token.")
+    except Exception as exc:
+        log(f"  expiry: debug_token check failed ({exc}). Continuing anyway.")
 
     account = api_get(
         ig_user_id, {"fields": "username,followers_count", "access_token": token}
