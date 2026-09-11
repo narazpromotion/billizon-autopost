@@ -198,12 +198,15 @@ def check_token(ig_user_id, token):
             f"Check it was copied whole and has not expired. Detail: {exc}"
         )
 
-    kind = "Page" if who.get("id") == PAGE_ID else "USER"
-    log(f"  token: {kind} token for '{who.get('name')}'")
+    kind = "Page" if who.get("id") == PAGE_ID else "non-Page"
+    log(f"  token: {kind} token, identifies as '{who.get('name')}'")
 
-    if kind == "USER":
-        log("  WARNING: this is a User token, not a Page token. Publishing works")
-        log("  today but the token dies with the user session.")
+    # Deliberately no warning here. A System User token reports the system user
+    # rather than the Page, which is correct and is what we run on. Identity
+    # says nothing useful about whether the token will still work tomorrow;
+    # only expiry does, and the account check below proves it can actually
+    # reach Instagram. Judging a token by which name comes back from /me is
+    # what produced two confidently wrong diagnoses in September 2026.
 
     # expires_at of 0 means never. Anything else is a countdown.
     try:
